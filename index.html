@@ -1001,9 +1001,9 @@ function openE(id){
   document.getElementById('eP').oninput=e=>document.getElementById('ePV').textContent=e.target.value+'%';
   document.getElementById('eC').onchange=e=>document.getElementById('nCF').style.display=e.target.value==='__n'?'block':'none';
   document.getElementById('eR').onchange=e=>document.getElementById('nRF').style.display=e.target.value==='__n'?'block':'none';
-  document.getElementById('dpF').innerHTML='<button class="btn btn-p btn-s" id="bAp">Aplicar cambios</button><button class="btn btn-d btn-s" id="bDl">Eliminar tarea</button>';
+  document.getElementById('dpF').innerHTML='<button class="btn btn-p btn-s" id="bAp">Aplicar cambios</button><button class="btn btn-d btn-s" id="bDl">Eliminar</button>';
   document.getElementById('bAp').onclick=()=>{snap();applyE()};
-  document.getElementById('bDl').onclick=()=>{if(confirm('¿Eliminar esta tarea?')){snap();T=T.filter(x=>x.id!==sId);renum();rMeta();mD();closeDP();fRender()}};
+  document.getElementById('bDl').onclick=()=>deleteWithChildren(sId);
   dpEl.classList.add('open');ov.classList.add('open');rTasks();
 }
 function hasCycle(taskId,depId){
@@ -1338,7 +1338,7 @@ document.addEventListener('keydown',e=>{
     closeMenu();
   }
   if(e.key==='Delete'&&sId&&document.getElementById('dp').classList.contains('open')){
-    if(confirm('¿Eliminar esta tarea?')){snap();T=T.filter(x=>x.id!==sId);renum();rMeta();mD();closeDP();fRender()}
+    deleteWithChildren(sId)
   }
 });
 
@@ -1528,6 +1528,41 @@ startApp=function(){
 };
 
 // Pertenece a: update openE to show parent context
+// ── DELETE WITH CHILDREN ──
+function deleteWithChildren(id){
+  const t=T.find(x=>x.id===id);if(!t)return;
+  const lvls={'Proyecto':0,'Fase':1,'Tarea':2,'Subtarea':3,'Actividad':4,'Hito':4};
+  const myIdx=T.indexOf(t);const myLvl=lvls[t.type]!=null?lvls[t.type]:0;
+  // Collect block: parent + all descendants
+  const block=[t];
+  for(let j=myIdx+1;j<T.length;j++){
+    const cLvl=lvls[T[j].type]!=null?lvls[T[j].type]:0;
+    if(cLvl<=myLvl)break;
+    block.push(T[j]);
+  }
+  // Build confirmation message
+  const typeCounts={};
+  block.forEach(x=>{typeCounts[x.type]=(typeCounts[x.type]||0)+1});
+  const summary=Object.entries(typeCounts).map(([k,v])=>v>1?v+' '+k+'s':v+' '+k).join(', ');
+  const childCount=block.length-1;
+  let msg=`¿Eliminar "${t.name}"?`;
+  if(childCount>0){
+    msg+=`\n\nEsto también eliminará ${childCount} elemento${childCount>1?'s':''} dentro:\n`;
+    block.slice(1).forEach(x=>{
+      const indent='  '.repeat((lvls[x.type]||0)-(myLvl));
+      msg+=indent+'• '+x.type+': '+x.name+'\n';
+    });
+    if(childCount>8)msg=`¿Eliminar "${t.name}"?\n\nEsto también eliminará ${childCount} elementos (${summary}).`;
+  }
+  if(!confirm(msg))return;
+  snap();
+  const idsToDelete=new Set(block.map(x=>x.id));
+  T=T.filter(x=>!idsToDelete.has(x.id));
+  renum();rMeta();mD();
+  if(typeof addHistory==='function')addHistory('Eliminó "'+t.name+'" y '+childCount+' elementos hijo');
+  closeDP();fRender();
+}
+
 // ── COLLAPSE ALL / EXPAND ALL ──
 let allCollapsed=false;
 document.getElementById('bCollapseAll').onclick=()=>{
